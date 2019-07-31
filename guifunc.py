@@ -5,11 +5,19 @@ import math
 from debugging import debug
 import io
 import tkinter
+from config import config
+import zipfile
+from PIL import Image
 
 if TYPE_CHECKING:
     from app_interface import ImageViewer
 
 # TODO: MAKE IT SO WHEN THE IMAGE IS RESIZED THROUGH HIDING THE INTERFACE THAT IT IS AUTOMATICALLY ANTIALIASED.
+
+
+def extract_images_from_archive(path):
+    with zipfile.ZipFile(path, "r") as myzip:
+        return [Image.open(io.BytesIO(myzip.read(x))) for x in myzip.filelist if ".jpg" in str(x)]
 
 
 def set_image(self: ImageViewer, picture: io.BytesIO = None) -> None:
@@ -20,63 +28,49 @@ def set_image(self: ImageViewer, picture: io.BytesIO = None) -> None:
     """
 
     if picture:
-        self.settings.current_image = picture
-        self.settings.current_image_copy = picture
+        print("skipping image")
+        self.current_image = picture
+        self.current_image_copy = picture
 
-    new_image = ImageTk.PhotoImage(self.settings.current_image)
+    new_image = ImageTk.PhotoImage(self.current_image)
     self.image_display.config(image=new_image)
     self.image_display.image = new_image
 
 
-def update_page_display(self: ImageViewer) -> None:
-    """
-    Updates the page counter at the bottom of the image viewer
-    """
+def increment_page(obj: ImageViewer, change: int) -> None:
 
-    current_page = self.settings.current_page + 1
-    max_page = self.settings.max_pages + 1
-    self.page_display.config(text=f"Page {current_page}/{max_page}")
+    old_page_number = obj.current_page
+    obj.current_page += change
 
+    current_page = obj.current_page
 
-def increment_page(self: ImageViewer, change):
-    old_page_number = self.settings.current_page
-    current_page = old_page_number + change
-    max_page = self.settings.max_pages
-
-    if current_page < 0:
-        current_page = 0
-    elif current_page > max_page:
-        current_page = max_page
-
-    if old_page_number is not current_page or change == 0:
+    if current_page is not old_page_number or change == 0:
         print("Updating Pages")
-        self.settings.current_page = current_page
-        self.settings.current_image = self.settings.list_of_images[self.settings.current_page]
-        self.settings.current_image_copy = self.settings.current_image
+        obj.current_image = obj.image_list[current_page]
+        obj.current_image_copy = obj.current_image
 
-        update_page_display(self)
-        resize_image(self)
-        self.parent.update()
+        resize_image(obj)
+        obj.update()
     else:
         print("Page has not changed")
 
 
 def hide_interface(self: ImageViewer):
-    interface_hidden = self.settings.interface_hidden
+    interface_hidden = self.interface_hidden
 
     if interface_hidden:
-        self.topFrame.grid(row=0, sticky="ew")
-        self.bottomFrame.grid(row=2, sticky="ew")
+        self.toolbar.grid(row=0)
+        self.bottom_display.grid(row=2, sticky="ew")
     else:
-        self.topFrame.grid_forget()
-        self.bottomFrame.grid_forget()
+        self.toolbar.grid_forget()
+        self.bottom_display.grid_forget()
 
-    self.settings.interface_hidden = not interface_hidden
+    self.interface_hidden = not interface_hidden
 
 
 def window_resized(self: ImageViewer, event: tkinter.Event) -> None:
     """
-    Adds a delay between when the image is resized to fit the window and when antialiasing is applied.
+    Adds a delay between when the image is resized to fit the window and when anti aliasing is applied.
     This makes for much smoother window resizing.
 
     :param self: the image viewer
@@ -84,16 +78,16 @@ def window_resized(self: ImageViewer, event: tkinter.Event) -> None:
     """
 
     def stop_dragging() -> None:
-        self.settings.drag_id = None
+        self.drag_id = None
         resize_image(self, toggled=True)
 
-    if self.settings.ANTIALIAS.get() is True:
-        if self.settings.drag_id:
+    if config.anti_alias:
+        if self.drag_id:
             # If window is already being dragged (already has a drag_id) then cancel the last after() call.
-            self.parent.after_cancel(self.settings.drag_id)
+            self.after_cancel(self.drag_id)
 
         resize_image(self, event, antialias=False, debugging=False)
-        self.settings.drag_id = self.parent.after(25, stop_dragging)
+        self.drag_id = self.after(25, stop_dragging)
     else:
         resize_image(self, event)
 
@@ -114,14 +108,14 @@ def resize_image(self: ImageViewer, event=None, toggled: bool = False, debugging
     """
 
     if antialias is None:
-        antialias = self.settings.ANTIALIAS.get()
+        antialias = config.anti_alias
 
     if debugging:
         print()
         print(f"Entering {resize_image.__name__}, antialias = {antialias}")
 
     def scale() -> (int, int):
-        size = self.settings.current_image_copy.size
+        size = self.current_image_copy.size
         asp_ratio = min(size)/max(size)
 
         if debugging:
@@ -148,7 +142,7 @@ def resize_image(self: ImageViewer, event=None, toggled: bool = False, debugging
     else:
         new_width, new_height = self.image_display.winfo_width(), self.image_display.winfo_height()
 
-    old_size = self.settings.current_image.size
+    old_size = self.current_image.size
     new_size = old_size if toggled else scale()
     size_change = (old_size != new_size)
 
@@ -156,5 +150,5 @@ def resize_image(self: ImageViewer, event=None, toggled: bool = False, debugging
         print(f"Old size: {old_size}, New size: {new_size}")
 
     if size_change or toggled:
-        self.settings.current_image = self.settings.current_image_copy.resize(new_size, antialias)
+        self.current_image = self.current_image_copy.resize(new_size, antialias)
         set_image(self)
