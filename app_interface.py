@@ -8,13 +8,16 @@ from config import config, Settings
 class Toolbar(tk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
-        self.parent = parent
+        self.parent: ImageViewer = parent
 
         self.prev_button = tk.Button(self, text="<", command=self.decrement_page)
         self.next_button = tk.Button(self, text=">", command=self.increment_page)
+        self.aa_enable = tk.Checkbutton(self, text="anti alias", command=self.button_checked)
+        self.aa_enable.select()
 
         self.prev_button.pack(side=tk.LEFT)
         self.next_button.pack(side=tk.LEFT)
+        self.aa_enable.pack()
 
     def increment_page(self) -> None:
         """
@@ -30,11 +33,53 @@ class Toolbar(tk.Frame):
         """
         guifunc.increment_page(self.parent, -1)
 
+    def button_checked(self):
+        """
+        When the anti alias checkbox is checked/unchecked this code will re-render
+        the currently displayed image with/without anti aliasing.
+        """
+        config.anti_alias = not config.anti_alias
+        print(config.anti_alias)
+        guifunc.resize_image(self.parent.image_display, toggled=True)
+
+
+class ImageDisplay(tk.Label):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent: ImageViewer = parent
+
+        self.config(background="black")
+        self.bind("<Configure>", self.window_resized)
+        self.bind("<Button-1>", self.hide_interface)
+
+        self.initialise_image()
+
+    def hide_interface(self, event) -> None:
+        """
+        Hides the top and bottom bar on the image viewer, making the image able to
+        stretch from the very top of the window to the very bottom.
+        """
+        print(event)
+        guifunc.hide_interface(self.parent)
+
+    def window_resized(self, event) -> None:
+        """
+        When the label displaying the image is resized, scale the image to fit.
+        """
+        guifunc.window_resized(self, event)
+
+    def initialise_image(self) -> None:
+        """
+        Display the initial image from the comic when the image viewer is opened.
+        """
+        root = self.parent
+        guifunc.set_image(self, root.image_list[root.current_page])
+
 
 class BottomDisplay(tk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
-        self.parent = parent
+        self.parent: ImageViewer = parent
         self.page_display = tk.Label(self)
         self.update_display(parent.current_page, parent.max_page)
 
@@ -47,9 +92,6 @@ class BottomDisplay(tk.Frame):
 class ImageViewer(tk.Tk):
     def __init__(self, path):
         super().__init__()
-        self.title("ComicReader")
-        self.geometry("500x700")
-        self.minsize(245, 350)
 
         self.path = path
         self.image_list = guifunc.extract_images_from_archive(self.path)
@@ -64,20 +106,10 @@ class ImageViewer(tk.Tk):
         self.drag_id = None
 
         self.toolbar = Toolbar(self)
+        self.image_display = ImageDisplay(self)
         self.bottom_display = BottomDisplay(self)
+        self.initialise_ui()
 
-        self.image_display = tk.Label(self, background="black")
-        self.image_display.bind("<Configure>", self.window_resized)
-        self.image_display.bind("<Button-1>", self.hide_interface)
-
-        # GRID GUI
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
-        self.toolbar.grid(row=0)
-        self.image_display.grid(row=1, column=0, sticky="nsew")
-        self.bottom_display.grid(row=2, column=0, sticky="ew")
-
-        self.initialise_image()
 
     @property
     def current_page(self):
@@ -95,38 +127,24 @@ class ImageViewer(tk.Tk):
         self._current_page = var
         self.bottom_display.update_display(self.current_page, self.max_page)
 
-    def initialise_image(self) -> None:
-        """
-        Display the initial image from the comic when the image viewer is opened.
-        """
-        guifunc.set_image(self, self.image_list[self.current_page])
+    # def resize_image(self, event) -> None:
+    #     """
+    #     Resizes the current image to fit the viewer while respecting window size and aspect ratio.
+    #     """
+    #     guifunc.resize_image(self.image_display, event)
 
-    def antialias_toggled(self) -> None:
-        """
-        When the antialias checkbox is checked/unchecked this code will re-render
-        the currently displayed image with/without antialiasing.
-        """
-        guifunc.resize_image(self, toggled=True)
+    def initialise_ui(self):
+        self.title("ComicReader")
+        self.geometry("500x700")
+        self.minsize(245, 350)
 
-    def window_resized(self, event) -> None:
-        """
-        When the label displaying the image is resized, scale the image to fit.
-        """
-        guifunc.window_resized(self, event)
+        # GRID GUI
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
 
-    def resize_image(self, event) -> None:
-        """
-        Resizes the current image to fit the viewer while respecting window size and aspect ratio.
-        """
-        guifunc.resize_image(self, event)
-
-    def hide_interface(self, event) -> None:
-        """
-        Hides the top and bottom bar on the image viewer, making the image able to
-        stretch from the very top of the window to the very bottom.
-        """
-        print(event)
-        guifunc.hide_interface(self)
+        self.toolbar.grid(row=0)
+        self.image_display.grid(row=1, column=0, sticky="nsew")
+        self.bottom_display.grid(row=2, column=0, sticky="ew")
 
 
 def show_vars(obj) -> None:

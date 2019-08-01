@@ -1,6 +1,6 @@
 from __future__ import annotations
 from PIL import ImageTk
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 import math
 from debugging import debug
 import io
@@ -10,31 +10,35 @@ import zipfile
 from PIL import Image
 
 if TYPE_CHECKING:
-    from app_interface import ImageViewer
+    from app_interface import ImageViewer, ImageDisplay
 
-# TODO: MAKE IT SO WHEN THE IMAGE IS RESIZED THROUGH HIDING THE INTERFACE THAT IT IS AUTOMATICALLY ANTIALIASED.
-
-
-def extract_images_from_archive(path):
-    with zipfile.ZipFile(path, "r") as myzip:
-        return [Image.open(io.BytesIO(myzip.read(x))) for x in myzip.filelist if ".jpg" in str(x)]
+# TODO: MAKE IT SO WHEN THE IMAGE IS RESIZED THROUGH HIDING THE INTERFACE THAT IT IS AUTOMATICALLY ANTI ALIASED.
 
 
-def set_image(self: ImageViewer, picture: io.BytesIO = None) -> None:
+def extract_images_from_archive(path: str) -> List[io.BytesIO]:
+    """
+    Reads through every file in a zip archive and returns all .jpg files as a list of io.BytesIO objects.
+    """
+    with zipfile.ZipFile(path, "r") as my_zip:
+        return [Image.open(io.BytesIO(my_zip.read(x))) for x in my_zip.filelist if ".jpg" in str(x)]
+
+
+def set_image(obj: ImageDisplay, picture: io.BytesIO = None) -> None:
     """
     Updates the image that is shown in the image viewer
-    :param self: the object that shows the image
+    :param obj: the object that shows the image
     :param picture: Pass an io.BytesIO image to forcibly change the current image. (e.g. on startup)
     """
 
-    if picture:
-        print("skipping image")
-        self.current_image = picture
-        self.current_image_copy = picture
+    root = obj.parent
 
-    new_image = ImageTk.PhotoImage(self.current_image)
-    self.image_display.config(image=new_image)
-    self.image_display.image = new_image
+    if picture:
+        root.current_image = picture
+        root.current_image_copy = picture
+
+    new_image = ImageTk.PhotoImage(root.current_image)
+    obj.config(image=new_image)
+    obj.image = new_image
 
 
 def increment_page(obj: ImageViewer, change: int) -> None:
@@ -49,7 +53,7 @@ def increment_page(obj: ImageViewer, change: int) -> None:
         obj.current_image = obj.image_list[current_page]
         obj.current_image_copy = obj.current_image
 
-        resize_image(obj)
+        resize_image(obj.image_display)
         obj.update()
     else:
         print("Page has not changed")
@@ -68,32 +72,37 @@ def hide_interface(self: ImageViewer):
     self.interface_hidden = not interface_hidden
 
 
-def window_resized(self: ImageViewer, event: tkinter.Event) -> None:
+def window_resized(obj: ImageDisplay, event: tkinter.Event) -> None:
     """
     Adds a delay between when the image is resized to fit the window and when anti aliasing is applied.
     This makes for much smoother window resizing.
 
-    :param self: the image viewer
+    :param obj: the image viewer
     :param event: a tkinter event that is called whenever the image viewer is resized.
     """
 
+    root = obj.parent
+
     def stop_dragging() -> None:
-        self.drag_id = None
-        resize_image(self, toggled=True)
+        # Now that the window hasn't been resized in x amount of time,
+        # re-render the image with anti aliasing enabled.
+        print("Resize stopped.")
+        root.drag_id = None
+        resize_image(obj, toggled=True)
 
     if config.anti_alias:
-        if self.drag_id:
+        if root.drag_id:
             # If window is already being dragged (already has a drag_id) then cancel the last after() call.
-            self.after_cancel(self.drag_id)
+            root.after_cancel(root.drag_id)
 
-        resize_image(self, event, antialias=False, debugging=False)
-        self.drag_id = self.after(25, stop_dragging)
+        resize_image(obj, event, antialias=False)
+        root.drag_id = root.after(25, stop_dragging)
     else:
-        resize_image(self, event)
+        resize_image(obj, event)
 
 
 @debug
-def resize_image(self: ImageViewer, event=None, toggled: bool = False, debugging: bool = False, antialias: bool = None):
+def resize_image(obj: ImageDisplay, event=None, toggled: bool = False, debugging: bool = False, antialias: bool = None):
     """
     Resizes the original image to fit the frame if the size has changed.
     Called when image is changed or from the window_resized function.
@@ -107,15 +116,17 @@ def resize_image(self: ImageViewer, event=None, toggled: bool = False, debugging
     :type event: Called whenever the image viewing window changes size.
     """
 
+    root = obj.parent
+
     if antialias is None:
         antialias = config.anti_alias
 
     if debugging:
         print()
-        print(f"Entering {resize_image.__name__}, antialias = {antialias}")
+        print(f"Entering resize_image, antialias = {antialias}")
 
     def scale() -> (int, int):
-        size = self.current_image_copy.size
+        size = root.current_image_copy.size
         asp_ratio = min(size)/max(size)
 
         if debugging:
@@ -140,9 +151,9 @@ def resize_image(self: ImageViewer, event=None, toggled: bool = False, debugging
         new_width = event.width
         new_height = event.height
     else:
-        new_width, new_height = self.image_display.winfo_width(), self.image_display.winfo_height()
+        new_width, new_height = obj.winfo_width(), obj.winfo_height()
 
-    old_size = self.current_image.size
+    old_size = root.current_image.size
     new_size = old_size if toggled else scale()
     size_change = (old_size != new_size)
 
@@ -150,5 +161,5 @@ def resize_image(self: ImageViewer, event=None, toggled: bool = False, debugging
         print(f"Old size: {old_size}, New size: {new_size}")
 
     if size_change or toggled:
-        self.current_image = self.current_image_copy.resize(new_size, antialias)
-        set_image(self)
+        root.current_image = root.current_image_copy.resize(new_size, antialias)
+        set_image(root.image_display)

@@ -8,5 +8,6 @@ def debug(func):
         start_time = time.time()
         value = func(*args, **kwargs)
         print(f"{func.__name__} took {time.time() - start_time} to run")
+        # print(f"args passed: {args} {kwargs}")
         return value
     return wrapper_debug
