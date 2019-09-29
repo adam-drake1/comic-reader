@@ -10,7 +10,7 @@ import zipfile
 from PIL import Image
 
 if TYPE_CHECKING:
-    from app_interface import ImageViewer, ImageDisplay
+    from image_viewer import ImageViewer, ImageDisplay
 
 # TODO: MAKE IT SO WHEN THE IMAGE IS RESIZED THROUGH HIDING THE INTERFACE THAT IT IS AUTOMATICALLY ANTI ALIASED.
 
