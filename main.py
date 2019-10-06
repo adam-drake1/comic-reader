@@ -1,6 +1,7 @@
 from image_viewer import ImageViewer, show_vars
 from config import config
 
+
 if __name__ == "__main__":
 
     # comic = r"C:\Users\adrake.KEMPTOWN\Pictures\onepunchman\onepunchman.cbz"
