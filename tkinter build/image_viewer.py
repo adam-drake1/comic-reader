@@ -1,6 +1,6 @@
 import tkinter as tk
 import guifunc
-from config import config, Settings
+from config import config
 
 
 class Toolbar(tk.Frame):

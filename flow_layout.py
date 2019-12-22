@@ -79,10 +79,26 @@ class FlowLayout(QLayout):
                 QSizePolicy.PushButton,
                 QtCore.Qt.Vertical)
 
+            if x < spaceX:
+                x = spaceX
+            if y < spaceY:
+                y = spaceY
+
+            width = item.sizeHint().width()
+            height = item.sizeHint().height()
+
             nextX = x + item.sizeHint().width() + spaceX
+
+            # If next comic doesn't fit within the bounds of the display area, start a new line.
             if nextX - spaceX > rect.right() and lineHeight > 0:
                 x = rect.x()
                 y = y + lineHeight + spaceY
+
+                if x < spaceX:
+                    x = spaceX
+                if y < spaceY:
+                    y = spaceY
+
                 nextX = x + item.sizeHint().width() + spaceX
                 lineHeight = 0
 

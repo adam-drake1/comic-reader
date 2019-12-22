@@ -2,32 +2,35 @@ import subprocess
 import sys
 import os
 import PySide2
-from zipfile import ZipFile
+
 import config
 from flow_layout import FlowLayout
-from pathlib import Path
+import gui_functions
+from factories import make_widget, DefaultWidget
 
-from PySide2 import QtWidgets, QtGui, QtCore
-from PySide2.QtCore import QSize, QPoint
-from PySide2.QtWidgets import QWidget, QPushButton, QToolTip, QApplication, QMessageBox, QMainWindow, QAction, QMenu, \
-    QLabel, QSizePolicy, QGridLayout, QHBoxLayout, QVBoxLayout, QSpacerItem, QScrollArea
-from PySide2.QtGui import QIcon, QFont, QKeySequence, Qt, QPixmap, QPalette, QColor, QImage
+from PySide2 import QtWidgets, QtGui
+from PySide2.QtWidgets import QWidget, QApplication, QMainWindow, QAction, QMenu, \
+    QLabel, QHBoxLayout, QScrollArea, QVBoxLayout, QSlider, QAbstractSlider
+from PySide2.QtGui import QIcon, Qt, QPixmap, QPalette, QColor
 
-settings = config.Settings()
+settings = config.settings
+
 
 ZIP_TYPES = settings.zip_types
 IMAGE_TYPES = settings.image_types
 DIRECTORIES = settings.directories
 
-# TODO: Use zoom value to change size of comics in explorer
-# TODO: Allow filter panel to be resized with mouse
+# TODO: Add Qsplitter to filter panel
 
 
 class Comic(QLabel):
-    scaleX = 145
-    scaleY = 200
+    # TODO: Need to add some kind of metadata to comic files and store said metadata
+    # TODO: Use zoom value to change size of comics in explorer
+    comicHeight = 200
+    comicWidth = comicHeight * 0.7
+    # comicWidth = 145
 
-    spaceX = 5
+    comicSpacer = 5
 
     def __init__(self, path: str, image: QPixmap, parent=None):
         super(Comic, self).__init__(parent)
@@ -35,18 +38,29 @@ class Comic(QLabel):
         self.image = image
         self.thumbnail = None
 
-        # set_colour(self, Qt.yellow)
+        settings.zoom.bind_to(self.test_zoom)
         self.set_image()
+
+    def test_zoom(self, value):
+        scaled_width = self.comicWidth * value
+        scaled_height = self.comicHeight * value
+
+        self.thumbnail = self.image.scaled(scaled_width, scaled_height, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+        self.setPixmap(self.thumbnail)
+        self.setFixedSize(scaled_width, scaled_height)
 
     def set_image(self):
         landscape = (self.image.size().width() > self.image.size().height())
 
         if landscape:
-            self.scaleX = (self.scaleX * 2) + self.spaceX
+            self.comicWidth = (self.comicWidth * 2) + self.comicSpacer
 
-        self.thumbnail = self.image.scaled(self.scaleX, self.scaleY, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+        scaled_width = self.comicWidth * settings.zoom
+        scaled_height = self.comicHeight * settings.zoom
+
+        self.thumbnail = self.image.scaled(scaled_width, scaled_height, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
         self.setPixmap(self.thumbnail)
-        self.setFixedSize(self.scaleX, self.scaleY)
+        self.setFixedSize(scaled_width, scaled_height)
         self.setAlignment(Qt.AlignCenter)
 
     def contextMenuEvent(self, ev: PySide2.QtGui.QContextMenuEvent) -> None:
@@ -77,28 +91,20 @@ class Comic(QLabel):
             print("OS not supported yet")
 
 
-class ComicExplorer(QWidget):
-    def __init__(self, parent, colour: QColor = None):
-        super(ComicExplorer, self).__init__(parent)
+class ComicExplorer(DefaultWidget):
+    def __init__(self):
+        super(ComicExplorer, self).__init__(debug_colour=Qt.green)
 
-        self.colour = colour
+        self.defaultColour = QApplication.style().standardPalette()
         self.layout = FlowLayout(self)
 
-        if self.colour:
-            set_colour(self, self.colour)
-
-        self.init_ui()
-
-    def init_ui(self):
-        set_colour(self, self.colour)
         self.display_comics()
 
     def display_comics(self):
-
         def rename(directory):
             print(f"Searching {directory}")
             for file in os.listdir(directory):
-                file_type = suffix(file)
+                file_type = gui_functions.suffix(file)
                 comic_path = os.path.join(directory, file)
 
                 # If file is folder then search folder
@@ -108,7 +114,7 @@ class ComicExplorer(QWidget):
 
                 # If file is a supported file type and contains an image then create Comic object.
                 if file_type in ZIP_TYPES:
-                    image = _image_from_zip(comic_path)
+                    image = gui_functions.image_from_path_to_zip(comic_path)
 
                     if image:
                         self.layout.addWidget(Comic(comic_path, image, self))
@@ -117,98 +123,103 @@ class ComicExplorer(QWidget):
             rename(x)
 
 
-def _image_from_zip(path: str) -> QPixmap:
+class InfoBar(DefaultWidget):
     """
-    Open an archive file at path and return a QPixmap containing the first image found in the archive.
-    If no supported images found, returns None.
-
-    :param path: Path to the comic book archive including file name and extension.
-    :return: QPixmap
+    Displays information to the user and allows users to adjust how large comics are in the comic explorer (zoom)
     """
+    def __init__(self):
+        super(InfoBar, self).__init__(debug_colour=Qt.cyan)
+        self.zoom_slider = QSlider(Qt.Horizontal, self)
+        self.zoom_slider.setMinimum(4)
+        self.zoom_slider.setMaximum(24)
+        self.zoom_slider.setValue(int(settings.zoom) * 8)
+        self.zoom_slider.valueChanged.connect(self.test)
+        self.zoom_slider.setPageStep(1)
 
-    with ZipFile(path, "r") as my_zip:
-        for x in my_zip.filelist:
-            if suffix(x.filename) in IMAGE_TYPES:
-                image = my_zip.read(x)
-                qp = QPixmap()
-                qp.loadFromData(image)
-                image = qp
-                return image
+    def test(self, value):
+        print(value)
+        settings.zoom.set(self.zoom_slider.value() / 8)
 
 
-def suffix(path):
-    return Path(path).suffix
+class SettingsWindow(DefaultWidget):
+    def __init__(self):
+        super(SettingsWindow, self).__init__(debug_colour=Qt.cyan)
+
+        self.defaultColour = QApplication.style().standardPalette()
+
+        self.debug = QtWidgets.QCheckBox("Enable/Disable debug mode?", self)
+        self.debug.setChecked(bool(settings.debug))
+        self.debug.clicked.connect(self.debug_clicked)
+
+    def debug_clicked(self):
+        settings.debug.set(self.debug.isChecked())
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, debug=False):
+    def __init__(self):
         super(MainWindow, self).__init__()
 
-        self.debug = debug
-        self.layout = QHBoxLayout()
+        self.create_actions()
+        self.create_menus()
 
-        self.init_ui()
+        self.verticalOuterLayout = QVBoxLayout()
+        self.horizontalInnerLayout = QHBoxLayout()
+        self.settingsWindow = SettingsWindow()
+        self.infoBar = InfoBar()
 
-    def init_ui(self):
+        self.init_main_window_ui()
+        settings.debug.set(True)
+
+    def init_main_window_ui(self):
         self.resize(1000, 900)
         self.setWindowTitle("HentaiReader")
         icon = QIcon(QPixmap("images/count.png"))
         self.setWindowIcon(icon)
 
-        self.setCentralWidget(make_widget(self, Qt.red, debug=self.debug))
-        self.centralWidget().setLayout(self.layout)
+        # setting up the central widget and main layouts for our widgets.
+        self.setCentralWidget(make_widget(self))
+        self.centralWidget().setLayout(self.verticalOuterLayout)
+        horizontal_inner_layout_widget = make_widget(self, Qt.red)
+        horizontal_inner_layout_widget.setLayout(self.horizontalInnerLayout)
+        self.verticalOuterLayout.setMargin(0)
+        self.verticalOuterLayout.setSpacing(0)
+        self.horizontalInnerLayout.setMargin(3)
+        self.horizontalInnerLayout.setSpacing(5)
+        self.verticalOuterLayout.addWidget(horizontal_inner_layout_widget)
 
-        filter_panel = make_widget(self, Qt.blue, debug=self.debug)
+        # filter panel is the left-most panel that stores users' filtered comic list.
+        filter_panel = make_widget(self, Qt.blue)
         filter_panel.setFixedWidth(250)
-        self.layout.addWidget(filter_panel)
+        self.horizontalInnerLayout.addWidget(filter_panel)
 
-        comic_explorer = ComicExplorer(self, Qt.green)
-        self.layout.setMargin(3)
-        self.layout.setSpacing(5)
+        # comic explorer is where the comics are displayed.
+        comic_explorer = ComicExplorer()
 
+        # scroll area houses the comic explorer, so that you can scroll through comics if there
+        # are too many to display on a single monitor.
         scroll_area = QScrollArea(self)
         scroll_area.setWidget(comic_explorer)
         scroll_area.setWidgetResizable(True)
-        self.layout.addWidget(scroll_area)
+        self.horizontalInnerLayout.addWidget(scroll_area)
 
+        # info bar is the thin bar at the bottom of the window.
+        self.infoBar.setMinimumHeight(30)
+        self.verticalOuterLayout.addWidget(self.infoBar)
 
-def set_colour(obj, colour):
-    bg = QPalette()
-    bg.setColor(QPalette.Window, colour)
-    obj.setPalette(bg)
-    obj.setAutoFillBackground(True)
+    def create_actions(self):
+        self.settingsAction = QAction("Settings", self, triggered=self.settings_window)
 
+    def create_menus(self):
+        self.fileMenu = self.menuBar().addMenu("File")
+        self.fileMenu.addAction(self.settingsAction)
 
-def make_widget(parent, colour: QColor = None, *, max_height: int = None, debug: bool = None) -> QWidget:
-    widget = QWidget(parent)
-
-    if max_height is not None:
-        widget.setMaximumHeight(max_height)
-
-    if colour and debug:
-        set_colour(widget, colour)
-    return widget
-
-
-def make_layout(parent=None, layout=None, *, margin: int = None, spacing: int = None):
-    layout = layout()
-
-    if margin is not None:
-        layout.setMargin(margin)
-
-    if spacing is not None:
-        layout.setSpacing(spacing)
-
-    parent.setLayout(layout)
-    return layout
-
-
-def main():
-    app = QtWidgets.QApplication([])
-    root = MainWindow(debug=True)
-    root.show()
-    sys.exit(app.exec_())
+    def settings_window(self):
+        # TODO: Make it so that the settings window closes when the main window closes
+        self.settingsWindow.show()
 
 
 if __name__ == "__main__":
-    main()
+    app = QtWidgets.QApplication([])
+    root = MainWindow()
+    root.show()
+    sys.exit(app.exec_())
