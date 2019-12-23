@@ -1,5 +1,6 @@
 from PySide2 import QtCore, QtGui
 from PySide2.QtWidgets import QLayout, QWidget, QApplication, QPushButton, QSizePolicy
+from config import settings
 
 
 class FlowLayout(QLayout):

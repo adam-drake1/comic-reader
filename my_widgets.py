@@ -1,7 +1,21 @@
 from PySide2.QtGui import QColor, Qt, QPalette
-from PySide2.QtWidgets import QWidget, QApplication
+from PySide2.QtWidgets import QWidget, QApplication, QSlider
 
 from config import settings
+
+
+class ZoomSlider(QSlider):
+    def __init__(self, *args):
+        super().__init__(*args)
+
+        self.setMinimum(settings.explorerZoom.zoomScale * 0.5)
+        self.setMaximum(settings.explorerZoom.zoomScale * 3)
+        self.setValue(settings.explorerZoom.get_zoom() * settings.explorerZoom.zoomScale)
+        self.valueChanged.connect(self.change_zoom)
+        self.setPageStep(1)
+
+    def change_zoom(self, value):
+        settings.explorerZoom.set_zoom(self.value())
 
 
 def make_widget(*args, **kwargs):

@@ -3,7 +3,14 @@ class Settings:
     This is where application-wide settings are stored. Currently they are hard coded, but in the future
     they will be read from a file at launch to maintain settings over multiple application launches.
     """
+    __instance = None
+
     def __init__(self):
+        if Settings.__instance is None:
+            Settings.__instance = self
+        else:
+            raise Exception("This class is a singleton!")
+
         # FILE SETTINGS
         self.zip_types = [".cbz", ".zip"]
         self.image_types = [".jpg", ".jpeg", ".png"]
@@ -15,73 +22,68 @@ class Settings:
         # WINDOW SETTINGS
 
         # COMIC EXPLORER SETTINGS
-        self.zoom = self.Zoom()
+        self.explorerZoom = Zoom()
 
         # DEBUG SETTINGS
-        self.debug = self.Debug()
+        self.debug = Debug()
 
-    class Zoom:
-        def __init__(self):
-            super().__init__()
-            self._zoom = 1
-            self.observers = []
 
-        @property
-        def zoom(self):
-            return self._zoom
+class Observer:
+    def __init__(self, class_name="", value=None):
+        self.observers = []
+        self.className = str(class_name).lower()
 
-        @zoom.setter
-        def zoom(self, value):
-            print(f"setting _zoom to {value}")
-            self._zoom = value
-            for callback in self.observers:
-                print(f"announcing change to {callback}")
-                callback(self._zoom)
+        self._value = value
 
-        def bind_to(self, callback):
-            print(f"{callback} bound to zoom")
-            self.observers.append(callback)
+    @property
+    def value(self):
+        return self._value
 
-        def set(self, value):
-            self.zoom = value
+    @value.setter
+    def value(self, value):
+        print(f"setting _zoom to {value}")
+        self._value = value
+        for callback in self.observers:
+            print(f"announcing change to {callback.__qualname__}")
+            callback(self._value)
 
-        def __rmul__(self, other):
-            return other
-        __mul__ = __rmul__
+    def bind_to(self, callback):
+        print(f"{callback.__qualname__} bound to {self.__class__.__name__}")
+        self.observers.append(callback)
 
-        def __int__(self):
-            return self.zoom
+    def get_value(self):
+        return self.value
 
-    class Debug:
-        def __init__(self):
-            self._debug = True
-            self.observers = []
+    def set_value(self, value):
+        self.value = value
 
-        @property
-        def debug(self):
-            return self._debug
 
-        @debug.setter
-        def debug(self, value):
-            print(f"setting _debug to {value}")
-            self._debug = value
-            self.announce_change()
+class Zoom(Observer):
+    def __init__(self):
+        super().__init__(self.__class__.__name__, 1/8)
+        self.zoomScale = 8
 
-        def announce_change(self):
-            for callback in self.observers:
-                print(f"announcing change to {callback}")
-                callback(self._debug)
+        self.set_zoom = self.set_value
+        self.get_zoom = self.get_value
 
-        def set(self, value):
-            self.debug = value
+    def set_value(self, value):
+        self.value = value / self.zoomScale
 
-        def bind_to(self, callback):
-            print(f"{callback} bound to debug")
-            self.observers.append(callback)
+    def get_value(self):
+        return self.value * self.zoomScale
+
+
+class Debug(Observer):
+    def __init__(self):
+        super().__init__()
+        self._debug = True
+
+        self.set_debug = self.set_value
+        self.get_debug = self.get_value
 
 
 settings = Settings()
 
 
 if __name__ == "__main__":
-    print(settings.debug)
+    print(settings.explorerZoom)

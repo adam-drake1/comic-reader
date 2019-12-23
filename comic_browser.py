@@ -1,20 +1,18 @@
+import copy
 import subprocess
 import sys
 import os
 import PySide2
 
-import config
+from config import settings
 from flow_layout import FlowLayout
 import gui_functions
-from factories import make_widget, DefaultWidget
+from my_widgets import make_widget, DefaultWidget, ZoomSlider
 
-from PySide2 import QtWidgets, QtGui
+from PySide2 import QtWidgets, QtGui, QtCore
 from PySide2.QtWidgets import QWidget, QApplication, QMainWindow, QAction, QMenu, \
-    QLabel, QHBoxLayout, QScrollArea, QVBoxLayout, QSlider, QAbstractSlider
+    QLabel, QHBoxLayout, QScrollArea, QVBoxLayout, QSlider, QAbstractSlider, QSplitter, QDialog
 from PySide2.QtGui import QIcon, Qt, QPixmap, QPalette, QColor
-
-settings = config.settings
-
 
 ZIP_TYPES = settings.zip_types
 IMAGE_TYPES = settings.image_types
@@ -37,26 +35,28 @@ class Comic(QLabel):
         self.path = path
         self.image = image
         self.thumbnail = None
+        self.landscape = (self.image.size().width() > self.image.size().height())
 
-        settings.zoom.bind_to(self.test_zoom)
+        settings.explorerZoom.bind_to(self.test_zoom)
         self.set_image()
 
     def test_zoom(self, value):
         scaled_width = self.comicWidth * value
         scaled_height = self.comicHeight * value
 
+        if self.landscape:
+            scaled_width = (scaled_width * 2) + self.comicSpacer
+
         self.thumbnail = self.image.scaled(scaled_width, scaled_height, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
         self.setPixmap(self.thumbnail)
         self.setFixedSize(scaled_width, scaled_height)
 
     def set_image(self):
-        landscape = (self.image.size().width() > self.image.size().height())
+        scaled_width = self.comicWidth * settings.explorerZoom.get_zoom()
+        scaled_height = self.comicHeight * settings.explorerZoom.get_zoom()
 
-        if landscape:
-            self.comicWidth = (self.comicWidth * 2) + self.comicSpacer
-
-        scaled_width = self.comicWidth * settings.zoom
-        scaled_height = self.comicHeight * settings.zoom
+        if self.landscape:
+            scaled_width = (scaled_width * 2) + self.comicSpacer
 
         self.thumbnail = self.image.scaled(scaled_width, scaled_height, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
         self.setPixmap(self.thumbnail)
@@ -129,16 +129,10 @@ class InfoBar(DefaultWidget):
     """
     def __init__(self):
         super(InfoBar, self).__init__(debug_colour=Qt.cyan)
-        self.zoom_slider = QSlider(Qt.Horizontal, self)
-        self.zoom_slider.setMinimum(4)
-        self.zoom_slider.setMaximum(24)
-        self.zoom_slider.setValue(int(settings.zoom) * 8)
-        self.zoom_slider.valueChanged.connect(self.test)
-        self.zoom_slider.setPageStep(1)
+        self.zoom_slider = ZoomSlider(Qt.Horizontal, self)
 
-    def test(self, value):
-        print(value)
-        settings.zoom.set(self.zoom_slider.value() / 8)
+    def init_ui(self):
+        pass
 
 
 class SettingsWindow(DefaultWidget):
@@ -152,7 +146,7 @@ class SettingsWindow(DefaultWidget):
         self.debug.clicked.connect(self.debug_clicked)
 
     def debug_clicked(self):
-        settings.debug.set(self.debug.isChecked())
+        settings.debug.set_debug(self.debug.isChecked())
 
 
 class MainWindow(QMainWindow):
@@ -166,9 +160,10 @@ class MainWindow(QMainWindow):
         self.horizontalInnerLayout = QHBoxLayout()
         self.settingsWindow = SettingsWindow()
         self.infoBar = InfoBar()
+        self.splitter = Splitter(self, 250, "fill")
 
         self.init_main_window_ui()
-        settings.debug.set(True)
+        settings.debug.set_debug(True)
 
     def init_main_window_ui(self):
         self.resize(1000, 900)
@@ -184,13 +179,10 @@ class MainWindow(QMainWindow):
         self.verticalOuterLayout.setMargin(0)
         self.verticalOuterLayout.setSpacing(0)
         self.horizontalInnerLayout.setMargin(3)
-        self.horizontalInnerLayout.setSpacing(5)
         self.verticalOuterLayout.addWidget(horizontal_inner_layout_widget)
 
         # filter panel is the left-most panel that stores users' filtered comic list.
         filter_panel = make_widget(self, Qt.blue)
-        filter_panel.setFixedWidth(250)
-        self.horizontalInnerLayout.addWidget(filter_panel)
 
         # comic explorer is where the comics are displayed.
         comic_explorer = ComicExplorer()
@@ -200,10 +192,13 @@ class MainWindow(QMainWindow):
         scroll_area = QScrollArea(self)
         scroll_area.setWidget(comic_explorer)
         scroll_area.setWidgetResizable(True)
-        self.horizontalInnerLayout.addWidget(scroll_area)
+
+        self.horizontalInnerLayout.addWidget(self.splitter)
+        self.splitter.addWidget(filter_panel)
+        self.splitter.addWidget(scroll_area)
 
         # info bar is the thin bar at the bottom of the window.
-        self.infoBar.setMinimumHeight(30)
+        self.infoBar.setFixedHeight(30)
         self.verticalOuterLayout.addWidget(self.infoBar)
 
     def create_actions(self):
@@ -216,6 +211,31 @@ class MainWindow(QMainWindow):
     def settings_window(self):
         # TODO: Make it so that the settings window closes when the main window closes
         self.settingsWindow.show()
+
+
+class Splitter(QSplitter):
+    def __init__(self, parent, *args):
+        super().__init__(parent)
+        self.widget_sizes = [*args]
+
+        self.resizeEvent = self.resize_decorator(self.resizeEvent)
+        self.splitterMoved.connect(self.splitter_moved)
+
+    def splitter_moved(self, pos, index):
+        self.widget_sizes[index - 1] = pos
+
+    def resize_decorator(self, func):
+        def wrapper(*args):
+            func(*args)
+            sizes = []
+            for size in self.widget_sizes:
+                if isinstance(size, int):
+                    sizes.append(size)
+                elif size == "fill":
+                    sizes.append(self.size().width() - sum(sizes) - (self.handleWidth() * len(sizes)))
+                    break
+            self.setSizes(sizes)
+        return wrapper
 
 
 if __name__ == "__main__":
