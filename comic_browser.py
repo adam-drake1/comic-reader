@@ -3,6 +3,9 @@ import subprocess
 import sys
 import os
 import PySide2
+import random
+
+from PySide2.QtCore import QSize
 
 from config import settings
 from flow_layout import FlowLayout
@@ -11,14 +14,13 @@ from my_widgets import make_widget, DefaultWidget, ZoomSlider
 
 from PySide2 import QtWidgets, QtGui, QtCore
 from PySide2.QtWidgets import QWidget, QApplication, QMainWindow, QAction, QMenu, \
-    QLabel, QHBoxLayout, QScrollArea, QVBoxLayout, QSlider, QAbstractSlider, QSplitter, QDialog
+    QLabel, QHBoxLayout, QScrollArea, QVBoxLayout, QSlider, QAbstractSlider, QSplitter, QDialog, QListWidget, \
+    QListWidgetItem, QListView, QTreeWidget, QTreeWidgetItem, QFrame
 from PySide2.QtGui import QIcon, Qt, QPixmap, QPalette, QColor
 
 ZIP_TYPES = settings.zip_types
 IMAGE_TYPES = settings.image_types
 DIRECTORIES = settings.directories
-
-# TODO: Add Qsplitter to filter panel
 
 
 class Comic(QLabel):
@@ -72,7 +74,7 @@ class Comic(QLabel):
         cmenu = QMenu()
         open_menu = QMenu("Open")
 
-        open_menu.addAction("Open in HentaiReader")
+        open_menu.addAction("Open in ComicReader")
         open_menu.addAction("Open in New Tab")
         open_menu.addAction("Open in Explorer", self.open_in_explorer)
 
@@ -93,7 +95,7 @@ class Comic(QLabel):
 
 class ComicExplorer(DefaultWidget):
     def __init__(self):
-        super(ComicExplorer, self).__init__(debug_colour=Qt.green)
+        super(ComicExplorer, self).__init__()
 
         self.defaultColour = QApplication.style().standardPalette()
         self.layout = FlowLayout(self)
@@ -131,9 +133,6 @@ class InfoBar(DefaultWidget):
         super(InfoBar, self).__init__(debug_colour=Qt.cyan)
         self.zoom_slider = ZoomSlider(Qt.Horizontal, self)
 
-    def init_ui(self):
-        pass
-
 
 class SettingsWindow(DefaultWidget):
     def __init__(self):
@@ -142,11 +141,86 @@ class SettingsWindow(DefaultWidget):
         self.defaultColour = QApplication.style().standardPalette()
 
         self.debug = QtWidgets.QCheckBox("Enable/Disable debug mode?", self)
-        self.debug.setChecked(bool(settings.debug))
+        self.debug.setChecked(bool(settings.debug.get_debug()))
         self.debug.clicked.connect(self.debug_clicked)
 
     def debug_clicked(self):
         settings.debug.set_debug(self.debug.isChecked())
+
+
+class ExpandedList(QListWidget):
+    def __init__(self, parent: QWidget):
+        super().__init__(parent)
+
+        self.setFrameStyle(QFrame.NoFrame)
+        self.setMovement(QListView.Static)
+
+        for i in range(random.randint(1, 15)):
+            self.addItem(QListWidgetItem("Text"))
+
+    def sizeHint(self):
+        return QSize(self.sizeHintForColumn(0), self.sizeHintForRow(0) * self.count())
+
+
+class IconTree(QTreeWidget):
+    def __init__(self):
+        super().__init__()
+        self.setHeaderHidden(True)
+
+        self.addTopLevelItem(QTreeWidgetItem(["Library"]))
+
+        for i in range(10):
+            group = QTreeWidgetItem()
+            group.setText(0, "Group" + str(1))
+            group.setIcon(0, QIcon("images/count.png"))
+            self.addTopLevelItem(group)
+
+            content = QTreeWidgetItem()
+            group.addChild(content)
+            self.setItemWidget(content, 0, ExpandedList(self))
+
+
+# class FilterPanel(QListWidget):
+#     def __init__(self):
+#         super().__init__()
+#         self.groups = []
+#         self.addItem = self.add_item_decorator(self.addItem)
+#
+#         filtered_list_of_items = ["Reading", "Read", "My Favourites"]
+#
+#         self.libraryListItem = QListWidgetItem("Library")
+#
+#         self.filtered_lists = GroupedListWidgetItem("Filtered Lists")
+#         self.filtered_lists.add_children(*filtered_list_of_items)
+#
+#         self.addItem(self.libraryListItem)
+#         self.add_group(self.filtered_lists)
+#
+#     def add_group(self, group):
+#         self.groups.append(group)
+#
+#     def add_item_decorator(self, func):
+#         """
+#         Overwrite the default addItem function to work with my new GroupedListWidgetItems
+#         """
+#         def wrapper(*args, **kwargs):
+#             print(f"Adding {args} to {self.__class__.__name__}")
+#             func(*args, **kwargs)
+#         return wrapper
+#
+#
+# class GroupedListWidgetItem(QListWidgetItem):
+#     def __init__(self, label: str):
+#         super().__init__(label)
+#         self.children = []
+#
+#         self.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsEditable | Qt.ItemIsSelectable)
+#         self.setCheckState(Qt.Checked)
+#
+#     def add_children(self, *labels):
+#         for label in labels:
+#             child = QListWidgetItem(label)
+#             self.children.append(child)
 
 
 class MainWindow(QMainWindow):
@@ -163,11 +237,10 @@ class MainWindow(QMainWindow):
         self.splitter = Splitter(self, 250, "fill")
 
         self.init_main_window_ui()
-        settings.debug.set_debug(True)
 
     def init_main_window_ui(self):
         self.resize(1000, 900)
-        self.setWindowTitle("HentaiReader")
+        self.setWindowTitle("ComicReader")
         icon = QIcon(QPixmap("images/count.png"))
         self.setWindowIcon(icon)
 
@@ -182,7 +255,9 @@ class MainWindow(QMainWindow):
         self.verticalOuterLayout.addWidget(horizontal_inner_layout_widget)
 
         # filter panel is the left-most panel that stores users' filtered comic list.
-        filter_panel = make_widget(self, Qt.blue)
+        # filter_panel = make_widget(self, Qt.blue)
+        # filter_panel = FilterPanel()
+        filter_panel = IconTree()
 
         # comic explorer is where the comics are displayed.
         comic_explorer = ComicExplorer()
@@ -225,8 +300,11 @@ class Splitter(QSplitter):
         self.widget_sizes[index - 1] = pos
 
     def resize_decorator(self, func):
-        def wrapper(*args):
-            func(*args)
+        """
+        Overwrite the default resizeEvent so the splitter keeps its position relative to the window's size.
+        """
+        def wrapper(*args, **kwargs):
+            func(*args, **kwargs)
             sizes = []
             for size in self.widget_sizes:
                 if isinstance(size, int):
@@ -240,6 +318,8 @@ class Splitter(QSplitter):
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication([])
+    app.setStyle("Fusion")
+    # print(QtWidgets.QStyleFactory.keys())
     root = MainWindow()
     root.show()
     sys.exit(app.exec_())

@@ -14,7 +14,7 @@ class Settings:
         # FILE SETTINGS
         self.zip_types = [".cbz", ".zip"]
         self.image_types = [".jpg", ".jpeg", ".png"]
-        self.directories = [r"D:\Porn\Hentai\test"]
+        self.directories = [r"D:\Hobby\Programming\Python\comic-reader\test_comics"]
 
         # IMAGE SETTINGS
         self.anti_alias = True
@@ -44,11 +44,13 @@ class Observer:
         print(f"setting _zoom to {value}")
         self._value = value
         for callback in self.observers:
-            print(f"announcing change to {callback.__qualname__}")
+            if settings.debug.get_debug():
+                print(f"announcing change to {callback.__qualname__}")
             callback(self._value)
 
     def bind_to(self, callback):
-        print(f"{callback.__qualname__} bound to {self.__class__.__name__}")
+        if settings.debug.get_debug():
+            print(f"{callback.__qualname__} bound to {self.__class__.__name__}")
         self.observers.append(callback)
 
     def get_value(self):
@@ -76,7 +78,7 @@ class Zoom(Observer):
 class Debug(Observer):
     def __init__(self):
         super().__init__()
-        self._debug = True
+        self._debug = False
 
         self.set_debug = self.set_value
         self.get_debug = self.get_value
